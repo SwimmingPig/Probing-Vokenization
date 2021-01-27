@@ -54,4 +54,4 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
            --max_seq_length=384 \
            --batch_size=8 \
            --do_lower_case=false
-done < "scripts/contextualizers_to_sentences.txt"
+done < "scripts/customized_contextualizers_to_sentences.txt"

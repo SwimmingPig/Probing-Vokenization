@@ -12,7 +12,5 @@
   "best_epoch": 7,
   "best_validation_accuracy": 0.8586231258340529,
   "best_validation_accuracy3": 0.976136274432844,
-  "best_validation_loss": 0.4546707249604739,
-  "test_accuracy": 0.8625191710252075,
-  "test_accuracy3": 0.9795115812654843
+  "best_validation_loss": 0.4546707249604739
 }
