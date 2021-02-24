@@ -29,6 +29,8 @@ import h5py
 import numpy as np
 from tqdm import tqdm
 
+# from transformers import BertConfig, BertModel, TFBertModel
+
 flags = tf.flags
 
 FLAGS = flags.FLAGS
@@ -385,6 +387,10 @@ def main(_):
       init_checkpoint=FLAGS.init_checkpoint,
       use_tpu=FLAGS.use_tpu,
       use_one_hot_embeddings=FLAGS.use_one_hot_embeddings)
+
+  # PATH = '../vokenization/vlm_12L_768H_wiki/'
+  # config = BertConfig.from_json_file(PATH + 'config.json')
+  # model_fn = TFBertModel.from_pretrained(PATH + 'pytorch_model.bin', from_pt=True, config=config)
 
   # If TPU is not available, this will fall back to normal Estimator on CPU
   # or GPU.

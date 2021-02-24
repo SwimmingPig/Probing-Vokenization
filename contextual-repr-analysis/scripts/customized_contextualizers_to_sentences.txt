@@ -1,1 +1,2 @@
-ewt_pos.hdf5 data/pos/en_ewt-ud_sentences.txt
+adposition_supersense_tagging.hdf5 data/adposition_supersenses/adposition_supersense_tagging_sentences.txt
+conll2003_ner.hdf5 data/ner/ner_sentences.txt

@@ -1,7 +1,26 @@
 /bert-master
 /bert-master/
+/bert-andy
+/bert-andy/
 
 /cased_L-12_H-768_A-12
 /cased_L-12_H-768_A-12/
+/cased_L-12_H-768_A-12-2018
+/cased_L-12_H-768_A-12-2018/
 
+/Treebank_3
+/Treebank_3/
+
+/vokenization/bert_12L_768H_wiki
+/vokenization/bert_12L_768H_wiki/
+/vokenization/bert_base_uncased_pytorch
+/vokenization/bert_base_uncased_pytorch/
+/vokenization/vlm_12L_768H_wiki
+/vokenization/vlm_12L_768H_wiki/
+
+contextual-repr-analysis/data
+contextual-repr-analysis/data/
+
+contextual-repr-analysis/ewt_pos_tagging_topmost_layer
+contextual-repr-analysis/ewt_pos_tagging_topmost_layer/
 

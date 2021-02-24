@@ -28,11 +28,13 @@ import torch
 from torch.utils.data import TensorDataset, DataLoader, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
 
-from pytorch_pretrained_bert.tokenization import BertTokenizer
-from pytorch_pretrained_bert.modeling import BertModel, BertConfig
+# from pytorch_pretrained_bert.tokenization import BertTokenizer
+# from pytorch_pretrained_bert.modeling import BertModel, BertConfig
 
-# from transformers import BertConfig, BertModel, TFBertModel, BertTokenizer
+from transformers import BertConfig, BertModel, TFBertModel, BertTokenizer
 
+import h5py
+import numpy as np
 import tqdm
 # from transformers import AutoConfig, AutoModel
 
@@ -66,7 +68,11 @@ def convert_examples_to_features(examples, seq_length, tokenizer):
 
     features = []
     for (ex_index, example) in enumerate(examples):
-        tokens_a = tokenizer.tokenize(example.text_a)
+        # Split words independently to maintain alignment with labels
+        tokens_a = []
+        tokenized_text_a = example.text_a.split(" ")
+        for text_a_token in tokenized_text_a:
+            tokens_a.extend(tokenizer.tokenize(text_a_token))
 
         tokens_b = None
         if example.text_b:
@@ -204,9 +210,11 @@ def main():
                              "bert-large-uncased, bert-base-cased, bert-base-multilingual, bert-base-chinese.")
 
     ## Other parameters
+    parser.add_argument("--model_path", default='./vlm_12L_768H_wiki/', type=str)
     parser.add_argument("--do_lower_case", action='store_true', help="Set this flag if you are using an uncased model.")
-    parser.add_argument("--layers", default="-1,-2,-3,-4, -5, -6, -7, -8, -9, -10, -11, -12", type=str)
-    parser.add_argument("--max_seq_length", default=128, type=int,
+    # parser.add_argument("--layers", default="0, -1,-2,-3,-4, -5, -6, -7, -8, -9, -10, -11, -12", type=str)
+    parser.add_argument("--layers", default="0,1,2,3,4,5,6,7,8,9,10,11,12", type=str)
+    parser.add_argument("--max_seq_length", default=384, type=int,
                         help="The maximum total input sequence length after WordPiece tokenization. Sequences longer "
                             "than this will be truncated, and sequences shorter than this will be padded.")
     parser.add_argument("--batch_size", default=8, type=int, help="Batch size for predictions.")
@@ -236,6 +244,23 @@ def main():
 
     examples = read_examples(args.input_file)
 
+    # Get a mapping of unique_id to the orig_to_token_map
+    unique_id_to_token_info = {}
+    for example in examples:
+        original_tokens = example.text_a.split(" ")
+        bert_tokens = []
+        original_to_bert = []
+        bert_tokens.append("[CLS]")
+        for orig_token in original_tokens:
+            original_to_bert.append(len(bert_tokens))
+            bert_tokens.extend(tokenizer.tokenize(orig_token))
+        bert_tokens.append("[SEP]")
+        assert len(original_to_bert) == len(original_tokens)
+        unique_id_to_token_info[example.unique_id] = {
+            "original_tokens": original_tokens,
+            "bert_tokens": bert_tokens,
+            "original_to_bert": original_to_bert}
+
     features = convert_examples_to_features(
         examples=examples, seq_length=args.max_seq_length, tokenizer=tokenizer)
 
@@ -243,11 +268,14 @@ def main():
     for feature in features:
         unique_id_to_feature[feature.unique_id] = feature
 
-    model = BertModel.from_pretrained(args.bert_model)
+    # model = BertModel.from_pretrained(args.bert_model)
     # PATH = './vlm_12L_768H_wiki/'
+    # PATH = './bert_12L_768H_wiki/'
+    # PATH = './bert_base_uncased_pytorch/'
+    PATH = args.model_path
 
-    # config = BertConfig.from_json_file(PATH + 'config.json')
-    # model = BertModel.from_pretrained(PATH + 'pytorch_model.bin', from_tf=False, config=config)
+    config = BertConfig.from_json_file(PATH + 'config.json')
+    model = BertModel.from_pretrained(PATH + 'pytorch_model.bin', from_tf=False, config=config)
 
     # model = torch.load(PATH + 'pytorch_model.bin', map_location=torch.device('cpu'))
 
@@ -271,15 +299,18 @@ def main():
     eval_dataloader = DataLoader(eval_data, sampler=eval_sampler, batch_size=args.batch_size)
 
     model.eval()
-    with open(args.output_file, "w", encoding='utf-8') as writer:
+
+    output_features = {}
+    sentence_to_index = {}
+    with h5py.File(args.output_file, "w") as fout:
         # for every batch size(32)
         for input_ids, input_mask, example_indices in eval_dataloader:
 
             input_ids = input_ids.to(device)
             input_mask = input_mask.to(device)
 
-            all_encoder_layers, _ = model(input_ids, token_type_ids=None, attention_mask=input_mask)
-            all_encoder_layers = all_encoder_layers
+            all_encoder_layers, _, all_hidden_states = model(input_ids, token_type_ids=None, attention_mask=input_mask)
+            all_encoder_layers = all_hidden_states
 
             # for every example in the batch
             for b, example_index in enumerate(example_indices):
@@ -287,31 +318,100 @@ def main():
 
                 feature = features[example_index.item()]
                 unique_id = int(feature.unique_id)
-                # feature = unique_id_to_feature[unique_id]
+                unique_id_str = str(unique_id)
+                sentence_to_index[
+                    " ".join(unique_id_to_token_info[unique_id]["original_tokens"])] = unique_id_str
+
+
+                feature = unique_id_to_feature[unique_id]
                 output_json = collections.OrderedDict()
                 output_json["linex_index"] = unique_id
-                all_out_features = []
 
+                all_features = []
                 # for every token(word) in the example(sentence)
                 for (i, token) in enumerate(feature.tokens):
+                    # only write token embedding if it corresponds to the representation
+                    # for an original word.
+                    if i not in unique_id_to_token_info[unique_id]["original_to_bert"]:
+                        continue
+                    # Len: num_layers
+
                     all_layers = []
                     # for every layer's output in the token(word)
                     for (j, layer_index) in enumerate(layer_indexes):
                         layer_output = all_encoder_layers[int(layer_index)].detach().cpu().numpy()
-                        print(layer_output.shape) # (512, 768) Original code is: (8(batch size), 512, 768)
+                        # print(layer_output.shape) # (8(batch size), 512, 768)
                         layer_output = layer_output[b]
-                        layers = collections.OrderedDict()
-                        layers["index"] = layer_index
-                        layers["values"] = [
+                        # layers = collections.OrderedDict()
+                        # layers["index"] = layer_index
+                        layer_output_values = [
                             round(x.item(), 6) for x in layer_output[i]
                         ]
-                        all_layers.append(layers)
-                    out_features = collections.OrderedDict()
-                    out_features["token"] = token
-                    out_features["layers"] = all_layers
-                    all_out_features.append(out_features)
-                output_json["features"] = all_out_features
-                writer.write(json.dumps(output_json) + "\n")
+                        all_layers.append(layer_output_values)
+                    all_layers = np.array(all_layers)
+                    all_features.append(all_layers)
+
+
+                # Write features to HDF5
+                features_to_write = np.array(all_features).transpose((1, 0, 2))
+                # Check that number of timesteps in features is the same as
+                # the number of words.
+                if len(unique_id_to_token_info[unique_id]["original_tokens"]) != features_to_write.shape[1]:
+                    raise ValueError("Original tokens: {} with len {}. "
+                                    "Shape of features_to_write: {}".format(
+                                    unique_id_to_token_info[unique_id]["original_tokens"],
+                                    len(unique_id_to_token_info[unique_id]["original_tokens"]),
+                                    features_to_write.shape))
+                fout.create_dataset(unique_id_str,
+                                    features_to_write.shape, dtype='float32',
+                                    data=features_to_write)
+
+        # Write sentence_to_index dict to HDF5
+        sentence_index_dataset = fout.create_dataset(
+        "sentence_to_index", (1,), dtype=h5py.special_dtype(vlen=str))
+        sentence_index_dataset[0] = json.dumps(sentence_to_index)
+
+    # with open(args.output_file, "w", encoding='utf-8') as writer:
+    #     # for every batch size(32)
+    #     for input_ids, input_mask, example_indices in eval_dataloader:
+
+    #         input_ids = input_ids.to(device)
+    #         input_mask = input_mask.to(device)
+
+    #         all_encoder_layers, _, all_hidden_states = model(input_ids, token_type_ids=None, attention_mask=input_mask)
+    #         all_encoder_layers = all_hidden_states
+
+    #         # for every example in the batch
+    #         for b, example_index in enumerate(example_indices):
+    #             print(example_index)
+
+    #             feature = features[example_index.item()]
+    #             unique_id = int(feature.unique_id)
+    #             # feature = unique_id_to_feature[unique_id]
+    #             output_json = collections.OrderedDict()
+    #             output_json["linex_index"] = unique_id
+    #             all_out_features = []
+
+    #             # for every token(word) in the example(sentence)
+    #             for (i, token) in enumerate(feature.tokens):
+    #                 all_layers = []
+    #                 # for every layer's output in the token(word)
+    #                 for (j, layer_index) in enumerate(layer_indexes):
+    #                     layer_output = all_encoder_layers[int(layer_index)].detach().cpu().numpy()
+    #                     # print(layer_output.shape) # (8(batch size), 512, 768)
+    #                     layer_output = layer_output[b]
+    #                     layers = collections.OrderedDict()
+    #                     layers["index"] = layer_index
+    #                     layers["values"] = [
+    #                         round(x.item(), 6) for x in layer_output[i]
+    #                     ]
+    #                     all_layers.append(layers)
+    #                 out_features = collections.OrderedDict()
+    #                 out_features["token"] = token
+    #                 out_features["layers"] = all_layers
+    #                 all_out_features.append(out_features)
+    #             output_json["features"] = all_out_features
+    #             writer.write(json.dumps(output_json) + "\n")
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@
 /contextualizers/
 /contextualizers
 
+
 # CCG data
 data/ccg/LDC2005T13.tgz
 data/ccg/train.txt
