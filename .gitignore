@@ -26,3 +26,6 @@ contextual-repr-analysis/data/
 contextual-repr-analysis/ewt_pos_tagging_topmost_layer
 contextual-repr-analysis/ewt_pos_tagging_topmost_layer/
 
+vokenization/vokenization-master/snap/vlm/pytorch_model.bin
+vokenization/vokenization-master/snap/vlm/training_args.bin
+vokenization/vokenization-master/snap/vlm/vocab.txt
