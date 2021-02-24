@@ -17,6 +17,8 @@
 /vokenization/bert_base_uncased_pytorch/
 /vokenization/vlm_12L_768H_wiki
 /vokenization/vlm_12L_768H_wiki/
+/vokenization/Results
+/vokenization/Results/
 
 contextual-repr-analysis/data
 contextual-repr-analysis/data/
